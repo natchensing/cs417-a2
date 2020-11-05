@@ -34,7 +34,7 @@ class NatController(app_manager.RyuApp):
         # Ignore IPv6 packets (not supported)
         if self.is_ipv6(data_packet):
             return
-        
+
         self.debug('Handling packet: %s' % data_packet)
         self.debug('Reason: %s' % of_packet.reason)
 
@@ -44,11 +44,11 @@ class NatController(app_manager.RyuApp):
         # Handle incoming ARP packet
         if self.is_arp(data_packet):
             self.handle_incoming_arp(of_packet, data_packet)
-        
+
         # Handle packet with destination MAC matching NAT external router MAC
         elif data_packet[0].dst == config.nat_external_mac:
             self.handle_incoming_external_msg(of_packet, data_packet)
-        
+
         # Handle packet from inside the internal network
         else:
             self.handle_incoming_internal_msg(of_packet, data_packet)
@@ -66,18 +66,18 @@ class NatController(app_manager.RyuApp):
         dst_mac = data_packet[0].dst
 
         if dst_mac in self.switch_table:
-            dst_port = self.switch_table[src_mac]
+            dst_port = self.switch_table[dst_mac]
         else:
             dst_port = of_packet.datapath.ofproto.OFPP_FLOOD
         self.send_packet(of_packet.data, of_packet, dst_port, actions=actions)
 
     def router_next_hop(self, parser, src_mac, dst_mac):
         '''Returns a list of actions performed by a router when moving from one hop to the next'''
-        
+
         return [parser.OFPActionDecNwTtl(), # Decrement network-layer TTL
                 parser.OFPActionSetField(eth_src=src_mac),
                 parser.OFPActionSetField(eth_dst=dst_mac)]
-        
+
     def router_forward(self, of_packet, data_packet, next_ip,
                        match=None, extra_actions=None):
         '''
@@ -85,14 +85,14 @@ class NatController(app_manager.RyuApp):
         match is set, also sends a flow update using the same actions
         for any future matching packet.
         '''
-        
+
         if next_ip not in self.arp_table:
             self.send_arp_request(next_ip, of_packet, match, extra_actions)
             return
         dst_mac = self.arp_table[next_ip]
         src_mac = config.nat_external_mac if next_ip == config.nat_gateway_ip \
                   else config.nat_internal_mac
-        
+
         parser = of_packet.datapath.ofproto_parser
         actions = self.router_next_hop(parser, src_mac, dst_mac)
         if extra_actions:
@@ -103,10 +103,10 @@ class NatController(app_manager.RyuApp):
         # This runs after switch_forward so that the output action is included.
         if match is not None:
             self.add_flow(of_packet.datapath, match, actions)
-            
+
     def send_packet(self, payload, of_packet, port, actions=None):
         '''Send a packet to the switch for processing/forwarding'''
-        
+
         switch = of_packet.datapath
         ofproto = switch.ofproto
         parser = switch.ofproto_parser
@@ -115,7 +115,7 @@ class NatController(app_manager.RyuApp):
             actions = []
         if port is not None:
             actions.append(parser.OFPActionOutput(port))
-        
+
         out = parser.OFPPacketOut(datapath=switch,
                                   buffer_id=ofproto.OFP_NO_BUFFER,
                                   in_port=of_packet.match['in_port'],
@@ -131,16 +131,16 @@ class NatController(app_manager.RyuApp):
         self.debug(' - actions: %s' % actions)
         ofproto = switch.ofproto
         parser = switch.ofproto_parser
-        
+
         instructions = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         modification = parser.OFPFlowMod(switch,
                                          match=match,
                                          instructions=instructions)
         switch.send_msg(modification)
-        
+
     def handle_incoming_arp(self, of_packet, data_packet):
         '''Handles incoming ARP packet: update ARP table and send replies to suitable requests'''
-        
+
         arp_src_ip = data_packet[1].src_ip
         arp_src_mac = data_packet[1].src_mac
         self.arp_table[arp_src_ip] = arp_src_mac
@@ -151,7 +151,7 @@ class NatController(app_manager.RyuApp):
                 self.router_forward(of_packet, packet.Packet(data=of_packet.data), arp_src_ip,
                                     match=match, extra_actions=actions)
             del self.pending_arp[arp_src_ip]
-        
+
         if data_packet[1].opcode == 1:
             # ARP request
             self.send_arp_reply(of_packet, data_packet)
@@ -168,14 +168,14 @@ class NatController(app_manager.RyuApp):
             return
         # Save packet so it's sent back again once ARP reply returns
         self.pending_arp[ip] = [entry]
-        
+
         if ip == config.nat_gateway_ip:
             src_mac = config.nat_external_mac
             src_ip = config.nat_external_ip
         else:
             src_mac = config.nat_internal_mac
             src_ip = config.nat_internal_ip
-        
+
         eth_packet = ethernet.ethernet(dst='ff:ff:ff:ff:ff:ff', # Broadcast
                                        src=src_mac,
                                        ethertype=ether.ETH_TYPE_ARP)
@@ -193,10 +193,10 @@ class NatController(app_manager.RyuApp):
         new_packet.add_protocol(arp_packet)
         new_packet.serialize()
         self.send_packet(new_packet, of_packet, of_packet.datapath.ofproto.OFPP_FLOOD)
-            
+
     def send_arp_reply(self, of_packet, data_packet):
         '''Builds and sends an ARP reply, if the IP corresponds to the switch'''
-        
+
         arp_dst_ip = data_packet[1].dst_ip
         if arp_dst_ip == config.nat_internal_ip:
             arp_dst_mac = config.nat_internal_mac
@@ -248,7 +248,7 @@ class NatController(app_manager.RyuApp):
 
     def handle_incoming_external_msg(self, of_packet, data_packet):
         '''Handles a packet with destination MAC equal to external side of NAT router.'''
-        
+        # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         pass
 
