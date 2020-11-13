@@ -43,14 +43,17 @@ class NatController(app_manager.RyuApp):
 
         # Handle incoming ARP packet
         if self.is_arp(data_packet):
+            self.debug("INCOMING ARP")
             self.handle_incoming_arp(of_packet, data_packet)
 
         # Handle packet with destination MAC matching NAT external router MAC
         elif data_packet[0].dst == config.nat_external_mac:
+            self.debug("INCOMING EXT PACKET")
             self.handle_incoming_external_msg(of_packet, data_packet)
 
         # Handle packet from inside the internal network
         else:
+            self.debug("INCOMING INT PACKET")
             self.handle_incoming_internal_msg(of_packet, data_packet)
 
     def switch_learn(self, of_packet, data_packet):
@@ -148,13 +151,22 @@ class NatController(app_manager.RyuApp):
         # For any packets waiting for this ARP reply to arrive, re-forward them
         if arp_src_ip in self.pending_arp:
             for of_packet, match, actions in self.pending_arp[arp_src_ip]:
+                self.debug("PROCESSING PENDING ARPS")
                 self.router_forward(of_packet, packet.Packet(data=of_packet.data), arp_src_ip,
                                     match=match, extra_actions=actions)
             del self.pending_arp[arp_src_ip]
 
         if data_packet[1].opcode == 1:
             # ARP request
+            self.debug("REQUESTS")
+            self.switch_forward(of_packet, data_packet)
             self.send_arp_reply(of_packet, data_packet)
+        else:
+            # ARP reply
+            self.debug("REPLIES")
+            self.switch_forward(of_packet, data_packet)
+            self.send_arp_reply(of_packet, data_packet)
+            ## broadcast request & reply
 
     def send_arp_request(self, ip, of_packet, match, actions):
         '''Send an ARP request for an IP with unknown MAC address'''
@@ -250,12 +262,14 @@ class NatController(app_manager.RyuApp):
         '''Handles a packet with destination MAC equal to external side of NAT router.'''
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
+        self.debug("HANDLING EXT PACKETS")
         pass
 
     def handle_incoming_internal_msg(self, of_packet, data_packet):
         '''Handles a packet with destination MAC equal to internal side of NAT router.'''
 
         # TODO Implement this function
+        self.debug("HANDLING INT PACKETS")
         pass
 
     def debug(self, str):
