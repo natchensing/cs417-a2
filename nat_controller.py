@@ -270,6 +270,7 @@ class NatController(app_manager.RyuApp):
 
         # TODO Implement this function
         self.debug("HANDLING INT PACKETS")
+        self.switch_forward(of_packet, data_packet)
         pass
 
     def debug(self, str):
