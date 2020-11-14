@@ -165,7 +165,7 @@ class NatController(app_manager.RyuApp):
             # ARP reply
             self.debug("REPLIES")
             self.switch_forward(of_packet, data_packet)
-            self.send_arp_reply(of_packet, data_packet)
+            # self.send_arp_reply(of_packet, data_packet)
             ## broadcast request & reply
 
     def send_arp_request(self, ip, of_packet, match, actions):
@@ -270,7 +270,39 @@ class NatController(app_manager.RyuApp):
 
         # TODO Implement this function
         self.debug("HANDLING INT PACKETS")
-        self.switch_forward(of_packet, data_packet)
+        packet_ip = data_packet.get_protocol(ipv4.ipv4)
+        print('data_packet: ' + str(data_packet))
+        print('of_packet: ' + str(of_packet))
+
+        mac_src = data_packet[0].src
+
+        ip_src = packet_ip.src
+        ip_dst = packet_ip.dst
+
+        if packet_ip:
+            self.debug("YES PACKET_IP")
+            if self.is_internal_network(ip_dst):
+                self.debug("FORWARDING TO INTERNAL NODE")
+                self.switch_forward(of_packet, data_packet)
+            else:
+
+                self.debug("FORWARDING TO EXTERNAL NODE")
+                print("ORIGINAL data_packet[1].src: " + str(data_packet[1].src))
+
+                data_packet[1].src = config.nat_external_ip
+
+                print("CHANGED data_packet[1].src: " + str(data_packet[1].src))
+                # SETUP TRANSLATION RULES
+                self.switch_learn(of_packet, data_packet)
+                in_port = of_packet.match['in_port']
+                self.ports_in_use[mac_src] = in_port
+                self.switch_forward(of_packet, data_packet)
+
+                self.debug("DONE")
+        print('self.arp_table: ' + str(self.arp_table))
+        print('self.switch_table: ' + str(self.switch_table))
+        print('self.pending_arp: ' + str(self.pending_arp))
+        print('self.ports_in_use: ' + str(self.ports_in_use))
         pass
 
     def debug(self, str):
