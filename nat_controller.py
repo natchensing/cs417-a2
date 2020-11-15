@@ -164,7 +164,8 @@ class NatController(app_manager.RyuApp):
         else:
             # ARP reply
             self.debug("REPLIES")
-            self.send_packet(of_packet.data, of_packet, of_packet.datapath.ofproto.OFPP_FLOOD)
+            self.switch_forward(of_packet, data_packet)
+            # self.send_packet(of_packet.data, of_packet, of_packet.datapath.ofproto.OFPP_FLOOD)
             # self.send_arp_reply(of_packet, data_packet)
             ## broadcast request & reply
 
@@ -264,20 +265,27 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
-        if not data_packet[0].dst in self.switch_table:
-            self.debug("NOT IN SWITCH TABLE %s" % data_packet[0].dst)
-        packet_ip = data_packet.get_protocol(ipv4.ipv4)
-        print('data_packet: ' + str(data_packet))
-        print('of_packet: ' + str(of_packet))
-        print('self.arp_table: ' + str(self.arp_table))
-        print('self.switch_table: ' + str(self.switch_table))
-        ip_dst = packet_ip.dst
+        host = int(str(data_packet[2].dst_port)[:1])
+        if host > 4:
+            return
+        port = int(str(data_packet[2].dst_port)[1:])
+        ip_dst = "192.168.0.%s" % host
         if self.is_internal_network(ip_dst):
             # port = self.switch_table[data_packet[0].dst]
+            if not ip_dst in self.arp_table:
+                self.debug("NOT IN ARP TABLE %s" % data_packet[0].dst)
+                self.send_arp_request(ip_dst, of_packet, None, None)
+                return
             self.debug("DST is internal")
-            data_packet[1].src = config.nat_internal_ip
-            data_packet[0].src = config.nat_internal_mac
-            self.switch_forward(of_packet, data_packet)
+            data_packet[0].dst = self.arp_table[ip_dst]
+            data_packet[1].dst = ip_dst
+            data_packet[2].dst_port = port
+            self.switch_learn(of_packet, data_packet)
+            print('data_packet: ' + str(data_packet))
+            print('of_packet: ' + str(of_packet))
+            print('self.arp_table: ' + str(self.arp_table))
+            print('self.switch_table: ' + str(self.switch_table))
+            self.send_packet(of_packet.data, of_packet, port)
         else:
             self.debug("DST NOT INTERNAL %s" % ip_dst)
             return
