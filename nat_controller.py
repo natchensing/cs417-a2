@@ -164,7 +164,7 @@ class NatController(app_manager.RyuApp):
         else:
             # ARP reply
             self.debug("REPLIES")
-            self.switch_forward(of_packet, data_packet)
+            self.send_packet(of_packet.data, of_packet, of_packet.datapath.ofproto.OFPP_FLOOD)
             # self.send_arp_reply(of_packet, data_packet)
             ## broadcast request & reply
 
@@ -218,6 +218,7 @@ class NatController(app_manager.RyuApp):
             return
 
         self.debug('Sending ARP reply: %s -> %s' % (arp_dst_ip, arp_dst_mac))
+        self.debug('ARP dst : %s -> %s' % ( data_packet[1].src_mac, data_packet[1].src_ip))
 
         eth_packet = ethernet.ethernet(dst=data_packet[1].src_mac,
                                        src=arp_dst_mac,
@@ -263,7 +264,23 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
-        pass
+        if not data_packet[0].dst in self.switch_table:
+            self.debug("NOT IN SWITCH TABLE %s" % data_packet[0].dst)
+        packet_ip = data_packet.get_protocol(ipv4.ipv4)
+        print('data_packet: ' + str(data_packet))
+        print('of_packet: ' + str(of_packet))
+        print('self.arp_table: ' + str(self.arp_table))
+        print('self.switch_table: ' + str(self.switch_table))
+        ip_dst = packet_ip.dst
+        if self.is_internal_network(ip_dst):
+            # port = self.switch_table[data_packet[0].dst]
+            self.debug("DST is internal")
+            data_packet[1].src = config.nat_internal_ip
+            data_packet[0].src = config.nat_internal_mac
+            self.switch_forward(of_packet, data_packet)
+        else:
+            self.debug("DST NOT INTERNAL %s" % ip_dst)
+            return
 
     def handle_incoming_internal_msg(self, of_packet, data_packet):
         '''Handles a packet with destination MAC equal to internal side of NAT router.'''
@@ -285,6 +302,10 @@ class NatController(app_manager.RyuApp):
                 self.debug("FORWARDING TO INTERNAL NODE")
                 self.switch_forward(of_packet, data_packet)
             else:
+                if hasattr(data_packet[1], 'dst_port'):
+                    port = data_packet[1].dst_port
+                else:
+                    port = data_packet[2].dst_port
 
                 self.debug("FORWARDING TO EXTERNAL NODE")
                 print("ORIGINAL data_packet[1].src: " + str(data_packet[1].src))
@@ -296,7 +317,7 @@ class NatController(app_manager.RyuApp):
                 self.switch_learn(of_packet, data_packet)
                 in_port = of_packet.match['in_port']
                 self.ports_in_use[mac_src] = in_port
-                self.switch_forward(of_packet, data_packet)
+                self.send_packet(of_packet.data, of_packet, port)
 
                 self.debug("DONE")
         print('self.arp_table: ' + str(self.arp_table))
