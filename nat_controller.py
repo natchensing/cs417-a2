@@ -261,6 +261,30 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
+        packet_ip = data_packet.get_protocol(ipv4.ipv4)
+        packet_tcp = data_packet.get_protocol(tcp.tcp)
+        packet_udp = data_packet.get_protocol(udp.udp)
+        print('data_packet: ' + str(data_packet))
+        print('of_packet: ' + str(of_packet))
+
+        mac_src = data_packet[0].src
+        mac_dst = data_packet[0].dst
+        ip_src = packet_ip.src
+        ip_dst = packet_ip.dst
+
+        in_port = of_packet.match['in_port']
+
+        print('self.ports_in_use: ' + str(self.ports_in_use))
+        for mac, port in self.ports_in_use.items():
+            if port == in_port:
+                mac_dst = mac_dst       ## SET MAC TO INTERNAL MAC
+                print('port used: ' + str(in_port))
+                del self.ports_in_use[mac]
+            else:
+                self.debug("DROPPING PACKET")
+                return
+        self.debug("SEND TO INTERNAL HOST")
+        self.switch_forward(of_packet, data_packet)
         pass
 
     def handle_incoming_internal_msg(self, of_packet, data_packet):
@@ -277,12 +301,17 @@ class NatController(app_manager.RyuApp):
 
         parser = of_packet.datapath.ofproto_parser
         in_port = of_packet.match['in_port']
-        # print("PARSER: " + str(parser))
 
         mac_src = data_packet[0].src
 
         ip_src = packet_ip.src
         ip_dst = packet_ip.dst
+        # # SET NAT PORT
+        nat_port = random.randint(0, 65353)
+        # while nat_port in self.ports_in_use:
+        #     nat_port = random.randint(0, 65353)
+        #     break
+        # self.ports_in_use[nat_port] = ip_src
 
         if packet_ip:
             self.debug("YES PACKET_IP")
@@ -292,8 +321,6 @@ class NatController(app_manager.RyuApp):
 
             else:
                 self.debug("FORWARDING TO EXTERNAL NODE")
-
-                out = parser.OFPActionSetField(ipv4_src=config.nat_external_ip)
 
                 # SETUP TRANSLATION RULES
                 self.switch_learn(of_packet, data_packet)
