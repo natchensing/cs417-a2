@@ -265,7 +265,11 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
-        host = data_packet[2].dst_port % 10
+        dst_port = 99
+        for packet in data_packet:
+            if hasattr(packet, "dst_port"):
+                dst_port = packet.dst_port
+        host = dst_port % 10
         if host > 4:
             return
         port = data_packet[2].dst_port // 10
@@ -321,7 +325,7 @@ class NatController(app_manager.RyuApp):
                 # SETUP TRANSLATION RULES
                 host = ip_src[-1]
                 in_port = of_packet.match['in_port'] * 10 + int(host)
-                self.ports_in_use[mac_src] = in_port
+                self.ports_in_use[mac_src] = of_packet.match['in_port']
                 actions.append(parser.OFPActionSetField(in_port=in_port))
                 of_packet.datapath.ofproto_parser = parser
                 self.switch_learn(of_packet, data_packet)
