@@ -265,7 +265,7 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
-        host = int(str(data_packet[2].dst_port)[:1])
+        host = data_packet[2].dst_port % 10
         if host > 4:
             return
         port = int(str(data_packet[2].dst_port)[1:])
@@ -273,7 +273,7 @@ class NatController(app_manager.RyuApp):
         if self.is_internal_network(ip_dst):
             # port = self.switch_table[data_packet[0].dst]
             if not ip_dst in self.arp_table:
-                self.debug("NOT IN ARP TABLE %s" % data_packet[0].dst)
+                self.debug("NOT IN ARP TABLE %s" % ip_dst)
                 self.send_arp_request(ip_dst, of_packet, None, None)
                 return
             self.debug("DST is internal")
@@ -317,15 +317,18 @@ class NatController(app_manager.RyuApp):
 
                 self.debug("FORWARDING TO EXTERNAL NODE")
                 print("ORIGINAL data_packet[1].src: " + str(data_packet[1].src))
+                parser = of_packet.datapath.ofproto_parser
 
                 data_packet[1].src = config.nat_external_ip
-
+                parser.OFPActionSetField(eth_src=config.nat_external_ip)
                 print("CHANGED data_packet[1].src: " + str(data_packet[1].src))
                 # SETUP TRANSLATION RULES
-                self.switch_learn(of_packet, data_packet)
-                in_port = of_packet.match['in_port']
+                host = ip_src[-1]
+                in_port = of_packet.match['in_port'] * 10 + int(host)
                 self.ports_in_use[mac_src] = in_port
-                self.send_packet(of_packet.data, of_packet, port)
+                parser.OFPActionSetField(in_port=in_port)
+                self.switch_learn(of_packet, data_packet)
+                self.router_forward(of_packet, data_packet, ip_dst)
 
                 self.debug("DONE")
         print('self.arp_table: ' + str(self.arp_table))
