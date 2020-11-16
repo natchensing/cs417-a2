@@ -268,7 +268,7 @@ class NatController(app_manager.RyuApp):
         host = data_packet[2].dst_port % 10
         if host > 4:
             return
-        port = int(str(data_packet[2].dst_port)[1:])
+        port = data_packet[2].dst_port // 10
         ip_dst = "192.168.0.%s" % host
         if self.is_internal_network(ip_dst):
             # port = self.switch_table[data_packet[0].dst]
