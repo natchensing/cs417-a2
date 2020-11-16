@@ -48,12 +48,10 @@ class NatController(app_manager.RyuApp):
 
         # Handle packet with destination MAC matching NAT external router MAC
         elif data_packet[0].dst == config.nat_external_mac:
-            self.debug("INCOMING EXT PACKET")
             self.handle_incoming_external_msg(of_packet, data_packet)
 
         # Handle packet from inside the internal network
         else:
-            self.debug("INCOMING INT PACKET")
             self.handle_incoming_internal_msg(of_packet, data_packet)
 
     def switch_learn(self, of_packet, data_packet):
@@ -270,9 +268,16 @@ class NatController(app_manager.RyuApp):
 
         # TODO Implement this function
         self.debug("HANDLING INT PACKETS")
+
         packet_ip = data_packet.get_protocol(ipv4.ipv4)
+        packet_tcp = data_packet.get_protocol(tcp.tcp)
+        packet_udp = data_packet.get_protocol(udp.udp)
         print('data_packet: ' + str(data_packet))
-        print('of_packet: ' + str(of_packet))
+        # print('of_packet: ' + str(of_packet))
+
+        parser = of_packet.datapath.ofproto_parser
+        in_port = of_packet.match['in_port']
+        # print("PARSER: " + str(parser))
 
         mac_src = data_packet[0].src
 
@@ -284,21 +289,25 @@ class NatController(app_manager.RyuApp):
             if self.is_internal_network(ip_dst):
                 self.debug("FORWARDING TO INTERNAL NODE")
                 self.switch_forward(of_packet, data_packet)
+
             else:
-
                 self.debug("FORWARDING TO EXTERNAL NODE")
-                print("ORIGINAL data_packet[1].src: " + str(data_packet[1].src))
 
-                data_packet[1].src = config.nat_external_ip
+                out = parser.OFPActionSetField(ipv4_src=config.nat_external_ip)
 
-                print("CHANGED data_packet[1].src: " + str(data_packet[1].src))
                 # SETUP TRANSLATION RULES
                 self.switch_learn(of_packet, data_packet)
-                in_port = of_packet.match['in_port']
+
                 self.ports_in_use[mac_src] = in_port
                 self.switch_forward(of_packet, data_packet)
 
-                self.debug("DONE")
+                if packet_tcp:
+                    self.debug("TCP PACKET")
+                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
+                elif packet_udp:
+                    self.debug("UDP PACKET")
+                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
+
         print('self.arp_table: ' + str(self.arp_table))
         print('self.switch_table: ' + str(self.switch_table))
         print('self.pending_arp: ' + str(self.pending_arp))
