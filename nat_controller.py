@@ -261,30 +261,31 @@ class NatController(app_manager.RyuApp):
         # already checked dest MAC == external NAT ip_address
         # TODO Implement this function
         self.debug("HANDLING EXT PACKETS")
-        # packet_ip = data_packet.get_protocol(ipv4.ipv4)
-        # packet_tcp = data_packet.get_protocol(tcp.tcp)
-        # packet_udp = data_packet.get_protocol(udp.udp)
-        # print('data_packet: ' + str(data_packet))
-        # print('of_packet: ' + str(of_packet))
-        #
-        # mac_src = data_packet[0].src
-        # mac_dst = data_packet[0].dst
-        # ip_src = packet_ip.src
-        # ip_dst = packet_ip.dst
-        #
-        # in_port = of_packet.match['in_port']
-        #
-        # print('self.ports_in_use: ' + str(self.ports_in_use))
-        # for mac, port in self.ports_in_use.items():
-        #     if port == in_port:
-        #         mac_dst = mac_dst       ## SET MAC TO INTERNAL MAC
-        #         print('port used: ' + str(in_port))
-        #         del self.ports_in_use[mac]
-        #     else:
-        #         self.debug("DROPPING PACKET")
-        #         return
-        # self.debug("SEND TO INTERNAL HOST")
-        # self.switch_forward(of_packet, data_packet)
+        packet_ip = data_packet.get_protocol(ipv4.ipv4)
+        packet_tcp = data_packet.get_protocol(tcp.tcp)
+        packet_udp = data_packet.get_protocol(udp.udp)
+        print('data_packet: ' + str(data_packet))
+        print('of_packet: ' + str(of_packet))
+
+        mac_src = data_packet[0].src
+        mac_dst = data_packet[0].dst
+        ip_src = packet_ip.src
+        ip_dst = packet_ip.dst
+
+        in_port = of_packet.match['in_port']
+        self.debug("IN_PORT: " + str(in_port))
+
+        print('self.ports_in_use: ' + str(self.ports_in_use))
+        if in_port in self.ports_in_use:
+            mac_dst = self.ports_in_use[in_port]
+            del self.ports_in_use[in_port]
+            print('DELETED PORT: ' + str(in_port))
+        else:
+            self.debug("DROPPING PACKET")
+            print('PORT: ' + str(in_port))
+            return
+        self.debug("SEND TO INTERNAL HOST")
+        self.switch_forward(of_packet, data_packet)
         pass
 
     def handle_incoming_internal_msg(self, of_packet, data_packet):
@@ -308,10 +309,19 @@ class NatController(app_manager.RyuApp):
         ip_dst = packet_ip.dst
         # # SET NAT PORT
         nat_port = random.randint(0, 65353)
-        # while nat_port in self.ports_in_use:
-        #     nat_port = random.randint(0, 65353)
-        #     break
-        # self.ports_in_use[nat_port] = ip_src
+        while nat_port in self.ports_in_use.values():
+            nat_port = random.randint(0, 65353)
+            break
+
+        if mac_src not in self.ports_in_use.values():
+            self.ports_in_use[nat_port] = mac_src
+        else:
+            for port, mac in self.ports_in_use.items():
+                if self.ports_in_use[port] == mac:
+                    nat_port = port
+
+        print('self.ports_in_use: ' + str(self.ports_in_use))
+        print("PORT USED: " + str(nat_port))
 
         if packet_ip:
             self.debug("YES PACKET_IP")
@@ -322,23 +332,29 @@ class NatController(app_manager.RyuApp):
             else:
                 self.debug("FORWARDING TO EXTERNAL NODE")
 
-                # SETUP TRANSLATION RULES
                 self.switch_learn(of_packet, data_packet)
-
-                self.ports_in_use[mac_src] = in_port
                 self.switch_forward(of_packet, data_packet)
 
                 if packet_tcp:
                     self.debug("TCP PACKET")
-                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
-                elif packet_udp:
-                    self.debug("UDP PACKET")
-                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
 
-        print('self.arp_table: ' + str(self.arp_table))
-        print('self.switch_table: ' + str(self.switch_table))
-        print('self.pending_arp: ' + str(self.pending_arp))
-        print('self.ports_in_use: ' + str(self.ports_in_use))
+                    actions =[]
+
+                    actions.append(parser.OFPActionSetField(tcp_src=nat_port))
+                    actions.append(parser.OFPActionSetField(eth_src=config.nat_external_mac))
+                    actions.append(parser.OFPActionSetField(ipv4_src=config.nat_external_ip))
+                    print('CHANGED data_packet: ' + str(data_packet))
+                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip, None, actions)
+                    self.switch_forward(of_packet, data_packet)
+
+                # elif packet_udp:
+                #     self.debug("UDP PACKET")
+                #     self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
+
+        # print('self.arp_table: ' + str(self.arp_table))
+        # print('self.switch_table: ' + str(self.switch_table))
+        # print('self.pending_arp: ' + str(self.pending_arp))
+        # print('self.ports_in_use: ' + str(self.ports_in_use))
         pass
 
     def debug(self, str):
