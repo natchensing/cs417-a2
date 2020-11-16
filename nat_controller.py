@@ -320,15 +320,17 @@ class NatController(app_manager.RyuApp):
                 parser = of_packet.datapath.ofproto_parser
 
                 data_packet[1].src = config.nat_external_ip
-                parser.OFPActionSetField(eth_src=config.nat_external_ip)
+                actions =[]
+                actions.append(parser.OFPActionSetField(eth_src=config.nat_external_ip))
                 print("CHANGED data_packet[1].src: " + str(data_packet[1].src))
                 # SETUP TRANSLATION RULES
                 host = ip_src[-1]
                 in_port = of_packet.match['in_port'] * 10 + int(host)
                 self.ports_in_use[mac_src] = in_port
-                parser.OFPActionSetField(in_port=in_port)
+                actions.append(parser.OFPActionSetField(in_port=in_port))
+                of_packet.datapath.ofproto_parser = parser
                 self.switch_learn(of_packet, data_packet)
-                self.router_forward(of_packet, data_packet, ip_dst)
+                self.router_forward(of_packet, data_packet, ip_dst,None,actions)
 
                 self.debug("DONE")
         print('self.arp_table: ' + str(self.arp_table))
