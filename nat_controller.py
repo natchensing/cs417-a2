@@ -310,11 +310,6 @@ class NatController(app_manager.RyuApp):
                 self.debug("FORWARDING TO INTERNAL NODE")
                 self.switch_forward(of_packet, data_packet)
             else:
-                if hasattr(data_packet[1], 'dst_port'):
-                    port = data_packet[1].dst_port
-                else:
-                    port = data_packet[2].dst_port
-
                 self.debug("FORWARDING TO EXTERNAL NODE")
                 print("ORIGINAL data_packet[1].src: " + str(data_packet[1].src))
                 parser = of_packet.datapath.ofproto_parser
