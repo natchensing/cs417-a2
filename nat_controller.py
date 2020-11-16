@@ -71,7 +71,7 @@ class NatController(app_manager.RyuApp):
             dst_port = self.switch_table[dst_mac]
         else:
             dst_port = of_packet.datapath.ofproto.OFPP_FLOOD
-        self.debug('Forwarding packet: %s' % data_packet)
+        self.debug('Forwarding packet to %s \n: %s' % (dst_port, data_packet))
         self.send_packet(of_packet.data, of_packet, dst_port, actions=actions)
 
     def router_next_hop(self, parser, src_mac, dst_mac):
@@ -267,28 +267,41 @@ class NatController(app_manager.RyuApp):
         packet_ip = data_packet.get_protocol(ipv4.ipv4)
         packet_tcp = data_packet.get_protocol(tcp.tcp)
         packet_udp = data_packet.get_protocol(udp.udp)
-        print('data_packet: ' + str(data_packet))
-        print('of_packet: ' + str(of_packet))
+        parser = of_packet.datapath.ofproto_parser
 
         mac_src = data_packet[0].src
         mac_dst = data_packet[0].dst
         ip_src = packet_ip.src
         ip_dst = packet_ip.dst
 
-        in_port = of_packet.match['in_port']
+        in_port = packet_tcp.dst_port
         self.debug("IN_PORT: " + str(in_port))
 
         print('self.ports_in_use: ' + str(self.ports_in_use))
         if in_port in self.ports_in_use:
-            mac_dst = self.ports_in_use[in_port]
-            del self.ports_in_use[in_port]
-            print('DELETED PORT: ' + str(in_port))
+            ip_dst = self.ports_in_use[in_port]
+            if not ip_dst in self.arp_table:
+                self.send_arp_request(ip_dst, of_packet, None, None)
+                return
+            mac_dst = self.arp_table[ip_dst]
+            data_packet[0].dst = mac_dst
+            actions =[]
+            actions.append(parser.OFPActionSetField(eth_dst=mac_dst))
+            packet_tcp.dst_port = self.switch_table[mac_dst]
+            actions.append(parser.OFPActionSetField(tcp_dst=packet_tcp.dst_port))
+            actions.append(parser.OFPActionSetField(ipv4_dst=ip_dst))
+
+            print('self.switch_table: ' + str(self.switch_table))
+            #del self.ports_in_use[in_port]
+            #print('DELETED PORT: ' + str(in_port))
         else:
             self.debug("DROPPING PACKET")
             print('PORT: ' + str(in_port))
             return
         self.debug("SEND TO INTERNAL HOST")
-        self.switch_forward(of_packet, data_packet)
+        print('data_packet: ' + str(data_packet))
+        print('of_packet: ' + str(of_packet))
+        self.switch_forward(of_packet, data_packet, actions)
         pass
 
     def handle_incoming_internal_msg(self, of_packet, data_packet):
@@ -311,16 +324,16 @@ class NatController(app_manager.RyuApp):
         ip_src = packet_ip.src
         ip_dst = packet_ip.dst
         # # SET NAT PORT
-        nat_port = random.randint(0, 65353)
-        while nat_port in self.ports_in_use.values():
-            nat_port = random.randint(0, 65353)
-            break
 
-        if mac_src not in self.ports_in_use.values():
-            self.ports_in_use[nat_port] = mac_src
+        if ip_src not in self.ports_in_use.values():
+            nat_port = random.randint(0, 65353)
+            while nat_port in self.ports_in_use.values():
+                nat_port = random.randint(0, 65353)
+                break
+            self.ports_in_use[nat_port] = ip_src
         else:
-            for port, mac in self.ports_in_use.items():
-                if self.ports_in_use[port] == mac:
+            for port, ip in self.ports_in_use.items():
+                if self.ports_in_use[port] == ip:
                     nat_port = port
 
         print('self.ports_in_use: ' + str(self.ports_in_use))
