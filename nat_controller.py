@@ -23,6 +23,7 @@ class NatController(app_manager.RyuApp):
         self.switch_table = {}
         self.pending_arp = {}
         self.ports_in_use = {}
+        self.timeout = 10
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def handle_packet_in(self, event):
@@ -136,6 +137,7 @@ class NatController(app_manager.RyuApp):
 
         instructions = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
         modification = parser.OFPFlowMod(switch,
+                                         idle_timeout=self.timeout,
                                          match=match,
                                          instructions=instructions)
         switch.send_msg(modification)
