@@ -348,9 +348,17 @@ class NatController(app_manager.RyuApp):
                     print('CHANGED data_packet: ' + str(data_packet))
                     self.router_forward(of_packet, data_packet, config.nat_gateway_ip, None, actions)
 
-                # elif packet_udp:
-                #     self.debug("UDP PACKET")
-                #     self.router_forward(of_packet, data_packet, config.nat_gateway_ip)
+                elif packet_udp:
+                    self.debug("UDP PACKET")
+
+                    # print('INCLUDES UDP data_packet: ' + str(data_packet))
+                    # print('INCLUDES UDP of_packet: ' + str(of_packet))
+                    actions =[parser.OFPActionSetField(udp_src=nat_port),
+                    parser.OFPActionSetField(eth_src=config.nat_external_mac),
+                    parser.OFPActionSetField(ipv4_src=config.nat_external_ip)]
+                    match = parser.OFPMatch(ipv4_dst=ip_dst, ipv4_src=ip_src)
+                    # print('CHANGED data_packet: ' + str(data_packet))
+                    self.router_forward(of_packet, data_packet, config.nat_gateway_ip, None, actions)
 
         # print('self.arp_table: ' + str(self.arp_table))
         # print('self.switch_table: ' + str(self.switch_table))
