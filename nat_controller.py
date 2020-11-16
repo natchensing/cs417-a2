@@ -70,6 +70,7 @@ class NatController(app_manager.RyuApp):
             dst_port = self.switch_table[dst_mac]
         else:
             dst_port = of_packet.datapath.ofproto.OFPP_FLOOD
+        self.debug('Forwarding packet: %s' % data_packet)
         self.send_packet(of_packet.data, of_packet, dst_port, actions=actions)
 
     def router_next_hop(self, parser, src_mac, dst_mac):
@@ -343,9 +344,9 @@ class NatController(app_manager.RyuApp):
                     actions.append(parser.OFPActionSetField(tcp_src=nat_port))
                     actions.append(parser.OFPActionSetField(eth_src=config.nat_external_mac))
                     actions.append(parser.OFPActionSetField(ipv4_src=config.nat_external_ip))
+                    match = parser.OFPMatch(ipv4_dst=ip_dst, ipv4_src=ip_src)
                     print('CHANGED data_packet: ' + str(data_packet))
                     self.router_forward(of_packet, data_packet, config.nat_gateway_ip, None, actions)
-                    self.switch_forward(of_packet, data_packet)
 
                 # elif packet_udp:
                 #     self.debug("UDP PACKET")
